@@ -75,7 +75,7 @@ typedef struct __attribute__((packed)) {
     void *callback;
     void *unk;
     void *attach_callback;
-    enum SALDeviceTypes allowed_devices[12];
+    uint8_t allowed_devices[12];
 } SALAddFilesystemArg;
 
 typedef int FSSALHandle;
@@ -83,6 +83,7 @@ typedef int FSSALHandle;
 #define PATCHED_CLIENT_HANDLES_MAX_COUNT 0x40
 
 FSAClientHandle *patchedClientHandles[PATCHED_CLIENT_HANDLES_MAX_COUNT];
+int enable_ustealth = 0;
 
 int (*const IOS_ResourceReply)(void *, int32_t) = (void *) 0x107f6b4c;
 
@@ -113,11 +114,13 @@ int (*const get_handle_from_val)(uint32_t)                          = (void *) 0
 int FSA_IOCTLV_HOOK(ResourceRequest *param_1, uint32_t u2, uint32_t u3) {
     FSAClientHandle *clientHandle = (FSAClientHandle *) get_handle_from_val(param_1->ipcmessage.fd);
     uint64_t oldValue             = clientHandle->processData->capabilityMask;
+    int oldUstealthValue         = enable_ustealth;
     int toBeRestored              = 0;
     for (int i = 0; i < PATCHED_CLIENT_HANDLES_MAX_COUNT; i++) {
         if (patchedClientHandles[i] == clientHandle) {
             clientHandle->processData->capabilityMask = 0xffffffffffffffffL;
             // printf("IOCTL: Force mask to 0xFFFFFFFFFFFFFFFF for client %08X\n", (uint32_t) clientHandle);
+            enable_ustealth = 1;
             toBeRestored = 1;
             break;
         }
@@ -127,6 +130,7 @@ int FSA_IOCTLV_HOOK(ResourceRequest *param_1, uint32_t u2, uint32_t u3) {
     if (toBeRestored) {
         // printf("IOCTL: Restore mask for client %08X\n", (uint32_t) clientHandle);
         clientHandle->processData->capabilityMask = oldValue;
+        enable_ustealth = oldUstealthValue;
     }
 
     return res;
@@ -137,11 +141,13 @@ int (*const real_FSA_IOCTL)(ResourceRequest *, uint32_t, uint32_t, uint32_t) = (
 int FSA_IOCTL_HOOK(ResourceRequest *request, uint32_t u2, uint32_t u3, uint32_t u4) {
     FSAClientHandle *clientHandle = (FSAClientHandle *) get_handle_from_val(request->ipcmessage.fd);
     uint64_t oldValue             = clientHandle->processData->capabilityMask;
+    int oldUstealthValue         = enable_ustealth;
     int toBeRestored              = 0;
     for (int i = 0; i < PATCHED_CLIENT_HANDLES_MAX_COUNT; i++) {
         if (patchedClientHandles[i] == clientHandle) {
             // printf("IOCTL: Force mask to 0xFFFFFFFFFFFFFFFF for client %08X\n", (uint32_t) clientHandle);
             clientHandle->processData->capabilityMask = 0xffffffffffffffffL;
+            enable_ustealth = 1;
             toBeRestored                              = 1;
             break;
         }
@@ -151,6 +157,7 @@ int FSA_IOCTL_HOOK(ResourceRequest *request, uint32_t u2, uint32_t u3, uint32_t 
     if (toBeRestored) {
         // printf("IOCTL: Restore mask for client %08X\n", (uint32_t) clientHandle);
         clientHandle->processData->capabilityMask = oldValue;
+        enable_ustealth = oldUstealthValue;
     }
 
     return res;
@@ -176,8 +183,7 @@ int *DAT_10bb7e40 = (int*) 0x10bb7e40;
 int *DAT_10bb7e44 = (int*) 0x10bb7e44;
 int *DAT_10bb7e50 = (int*) 0x10bb7e50;
 int *FSFAT_SALHandle = (int*) 0x10bb7e48;
-
- */
+*/
 
 FSSALHandle (*const FSSAL_AddFilesystem)(SALAddFilesystemArg *arg) = (void *) 0x10732d70;
 uint32_t (*const FSFAT_AttachDetachCB)(FSSALHandle handle, bool attach) = (void*) 0x1078e018;
@@ -186,7 +192,7 @@ int FSFAT_AddClient_hook(int client, int param2, int param3, int param4) {
     int retval = 0;
 
     if (client == 0) {
-        //*FSFAT_LastError = 0xffe1ffdf;
+        // *FSFAT_LastError = 0xffe1ffdf;
         *(uint32_t*)0x10bb7e80 = 0xffe1ffdf;
         retval = -0x1e0021;
         return retval;
@@ -207,10 +213,10 @@ int FSFAT_AddClient_hook(int client, int param2, int param3, int param4) {
     arg.allowed_devices[1] = SAL_DEVICE_USB;
     arg.allowed_devices[2] = SAL_DEVICE_END;
 
-    //*FSFAT_SALHandle = FSSAL_AddFilesystem(&arg);
-    //*DAT_10bb7e44 = 0x200;
-    //*DAT_10bb7e40 = 1;
-    //*DAT_10bb7e50 = client;
+    // *FSFAT_SALHandle = FSSAL_AddFilesystem(&arg);
+    // *DAT_10bb7e44 = 0x200;
+    // *DAT_10bb7e40 = 1;
+    // *DAT_10bb7e50 = client;
     *(FSSALHandle*)0x10bb7e48 = FSSAL_AddFilesystem(&arg);
     *(uint32_t*)0x10bb7e44 = 0x200;
     *(uint32_t*)0x10bb7e40 = 1;
@@ -220,28 +226,11 @@ int FSFAT_AddClient_hook(int client, int param2, int param3, int param4) {
     return retval;
 }
 
-bool enable_ustealth = 0;
-int (*const pdm_bpb_check_boot_sector)(uint8_t *boot_sector, uint32_t *param2) = (void *)0x107a9828;
+int (*const real_pdm_bpb_check_boot_sector)(uint8_t *boot_sector, uint32_t *param2) = (void *)0x107a9828;
 int pdm_bpb_check_boot_sector_hook(uint8_t *boot_sector, uint32_t *param2) {
-    if (enable_ustealth && boot_sector[0x1fe] == 0x55 && boot_sector[0x1ff] == 0xab) {
+    if (enable_ustealth == 1 && boot_sector[0x1fe] == 0x55 && boot_sector[0x1ff] == 0xab) {
         return 0;
     }
 
-    return pdm_bpb_check_boot_sector(boot_sector, param2);
-}
-
-int FSA_ioctl0x29_hook(FSAClientHandle *handle, void *request) {
-    int res = 0;
-    enable_ustealth = true;
-
-    IOS_ResourceReply(request, res);
-    return 0;
-}
-
-int FSA_ioctl0x30_hook(FSAClientHandle *handle, void *request) {
-    int res = 0;
-    enable_ustealth = false;
-
-    IOS_ResourceReply(request, res);
-    return 0;
+    return real_pdm_bpb_check_boot_sector(boot_sector, param2);
 }

@@ -55,12 +55,15 @@ void fs_run_patches(uint32_t ios_elf_start) {
     section_write_word(ios_elf_start, 0x1070FAEC, 0xEAFFFFF9);
 
     // patch FSFAT_AddClient to enable FAT support for USB devices
-    section_write_word(ios_elf_start, 0x1080bdc4, ARM_BL(0x1080bcd4, FSFAT_AddClient_hook));
+    section_write_word(ios_elf_start, 0x1080bdc4, FSFAT_AddClient_hook);
+    // mov r2, #0x1106
+    //section_write_word(ios_elf_start, 0x1078f5c0, 0x062101E3);
+    // str r2, [sp, #0x0c]
+    //section_write_word(ios_elf_start, 0x1078f5c8, 0x0C208DE5);
+    // nop
+    //section_write_word(ios_elf_start, 0x1078f5d4, 0x00F020E3);
 
     // patch pdm_bpb_check_boot_sector to allow mounting ustealth'd drives if flag set
-    section_write_word(ios_elf_start, 0x107a9828, ARM_BL(0x107a9828, pdm_bpb_check_boot_sector_hook));
-
-    // add fsa ioctl hooks to enable/disable ustealth
-    section_write_word(ios_elf_start, 0x1070124c, _FSA_ioctl0x29_hook);
-    section_write_word(ios_elf_start, 0x10701250, _FSA_ioctl0x30_hook);
+    section_write_word(ios_elf_start, 0x10793280, ARM_BL(0x10793280, pdm_bpb_check_boot_sector_hook));
+    section_write_word(ios_elf_start, 0x107a8b74, ARM_BL(0x107a8b74, pdm_bpb_check_boot_sector_hook));
 }

@@ -62,6 +62,19 @@ void instant_patches_setup(void) {
     *(volatile u32 *) 0x107044f0 = ARM_BL(0x107044f0, FSA_IOCTL_HOOK);
     *(volatile u32 *) 0x10704458 = ARM_BL(0x10704458, FSA_IOS_Close_Hook);
 
+    // patch FSFAT_AddClient to enable FAT support for USB devices
+    *(volatile u32 *) 0x1080bdc4 = FSFAT_AddClient_hook;
+    // mov r2, #0x1106
+    // *(volatile u32 *) 0x1078f5c0 = 0x062101E3;
+    // str r2, [sp, #0x0c]
+    // *(volatile u32 *) 0x1078f5c8 = 0x0C208DE5;
+    // nop
+    // *(volatile u32 *) 0x1078f5d4 = 0x00F020E3;
+
+    // patch pdm_bpb_check_boot_sector to allow mounting ustealth'd drives if flag set
+    *(volatile u32 *) 0x10793280 = ARM_BL(0x10793280, pdm_bpb_check_boot_sector_hook);
+    *(volatile u32 *) 0x107a8b74 = ARM_BL(0x107a8b74, pdm_bpb_check_boot_sector_hook);
+
     reset_fs_bss();
 
     // patch /dev/odm IOCTL 0x06 to return the disc key if in_buf[0] > 2.
